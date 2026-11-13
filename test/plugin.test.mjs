@@ -3,7 +3,18 @@
  * 真正的"在 Desktop Host 内加载"由 ~/.dsh/wecom-plugin.log 验证。
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import * as plugin from '../lib/index.js';
+
+// DSH's loader parses this file to validate the plugin's declared requirements.
+// A UTF-8 BOM makes JSON.parse throw, and the loader then *disables the row
+// silently* — the plugin never imports and the bot goes quiet. Guard it.
+const packagePath = join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
+const bytes = readFileSync(packagePath);
+assert.ok(!(bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf), 'package.json 不能带 UTF-8 BOM');
+assert.doesNotThrow(() => JSON.parse(bytes.toString('utf8')), 'package.json 必须能被 JSON.parse');
 
 assert.equal(typeof plugin.apply, 'function', '应导出 apply');
 assert.equal(plugin.name, 'wecom-bridge', '插件名');
