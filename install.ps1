@@ -96,6 +96,7 @@ if ($linked) {
 
 Write-Host "2/2 Writing the insert block ..."
 $stripped = (Strip-WecomBlock $current).TrimEnd()
+if ($stripped.Trim() -eq "[]") { $stripped = "" }   # 空 patch 必须留空，不能保留 [] 再接块序列
 if (-not ($stripped -match '\S')) { $stripped = "" }
 
 $quoted = @()
@@ -105,11 +106,17 @@ foreach ($item in ($AllowUsers -split '[,\s]+')) {
 }
 $allowList = '[' + ($quoted -join ', ') + ']'
 
+# Name the row by absolute path, not by the bare package specifier: the launcher
+# builds one immutable runtime resolution from the installation and the bundle
+# dependency graph, so a profile-local link is not guaranteed to be part of it.
+# Paths are explicitly supported for inserted rows.
+$entryName = (($pluginDir -replace '\\', '/').TrimEnd('/')) + '/lib/index.js'
+
 $block = @"
 $markerStart
 - insert:
     - id: wecom-bridge
-      name: dsh-wecom-plugin
+      name: "$entryName"
       config:
         botId: "$BotId"
         secret: "$Secret"
