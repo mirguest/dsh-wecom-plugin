@@ -1,0 +1,32 @@
+﻿{
+  "name": "dsh-wecom-plugin",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "WeCom (企业微信) smart-robot channel for DeepSeek Harness Desktop: list, read and continue the sessions that live in the desktop host",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis-plugin",
+    "wecom",
+    "企业微信",
+    "aibot"
+  ],
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js"
+  },
+  "files": [
+    "lib",
+    "install.ps1",
+    "README.md",
+    "docs"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node test/plugin.test.mjs && node test/phase3.test.mjs && node test/approval.test.mjs && node test/read.test.mjs"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,15 @@
+# 依赖与构建产物
+node_modules/
+*.tgz
+
+# 运行时产物（插件会往 ~/.dsh 写日志，仓库里不该出现）
+*.log
+data/
+coverage/
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
