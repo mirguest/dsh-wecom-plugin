@@ -81,7 +81,7 @@ apply() called; botId=set secret=set allowUsers=<你的 UserID>
 
 | 命令 | 作用 |
 |---|---|
-| `/sessions` | 列出 Desktop 全部会话（时间 / 运行中 / 已落盘 / 格式状态 / 工作目录） |
+| `/sessions` | 列出 Desktop 全部会话（标题 / 短 id / 时间 / 运行中 / 已落盘 / 格式状态 / 工作目录） |
 | `/read <序号> [条数]` | 看某条会话的历史对话（只读，过滤系统注入上下文） |
 | `/use <序号\|sessionId>` | 绑定会话；之后直接发文字即投递进去 |
 | `/status` | 当前绑定与运行状态 |
