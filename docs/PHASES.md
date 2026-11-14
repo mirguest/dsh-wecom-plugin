@@ -1,4 +1,6 @@
-﻿# 实施记录（阶段一~三）`n`n> 历史记录，最新用法以 [README](../README.md) 为准。
+# 实施记录（阶段一~三）
+
+> 历史记录，最新用法以 [README](../README.md) 为准，变更历史见 [CHANGELOG](../CHANGELOG.md)。
 
 ## 为什么必须换架构
 
@@ -27,7 +29,7 @@ session "..." is already owned by an active write handle
 插件 `dsh-wecom-plugin`：
 
 - 以 Cordis 插件形式导出 `name / inject / apply`（与官方插件同构，例如 `dsh-tool-todo` 的 `export { Config, apply, inject, name }`）
-- `inject: ['sessionQuery']`，加载后启动企业微信长连接（复用已验证的 `aibot` + `ws-client`，零依赖）
+- `inject: ['sessionQuery']`，加载后启动企业微信长连接（复用已验证的 `aibot` + `ws-client`，零依赖，现位于 `lib/aibot.js` / `lib/ws-client.js`）
 - 命令：`/ping`、`/id`、`/help`、`/sessions`、`/debug`
 - `/sessions` 直接调 `ctx.sessionQuery.listSessions()`；行字段名做了三种兼容（`id`/`sessionId`/`session.id`）
 - `/debug` 打印首行字段结构——用来一次性核对本机版本的返回形状

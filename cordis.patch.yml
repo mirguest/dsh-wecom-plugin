@@ -1,0 +1,14 @@
+# dsh-wecom-plugin bundle layer.
+#
+# Applied when this package is installed as a bundle. It inserts the plugin row
+# with an empty config on purpose: credentials never belong in a published
+# package. Provide them through one of:
+#   - environment variables: DSH_WECOM_BOT_ID / DSH_WECOM_SECRET /
+#     DSH_WECOM_ALLOW_USERS / DSH_WECOM_WS_URL / DSH_WECOM_PROVIDER /
+#     DSH_WECOM_MODEL
+#   - editing this profile's cordis.patch.yml and filling the config below
+#     (Windows users can also run .\install.ps1, which writes this block).
+- insert:
+    - id: wecom-bridge
+      name: "dsh-wecom-plugin"
+      config: {}

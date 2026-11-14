@@ -1,7 +1,8 @@
-﻿# Install dsh-wecom-plugin into a DSH Desktop profile.
+# Install dsh-wecom-plugin into a DSH Desktop profile.
 #
 #   .\install.ps1 -BotId "aib..." -Secret "gPJ..." -AllowUsers "zhangsan"
 #   .\install.ps1                     # prompts for the credentials
+#   .\install.ps1 -Package "dsh-wecom-plugin"   # install the published npm package
 #   .\install.ps1 -Uninstall
 #
 # The plugin must be added through "insert:"; a bare top-level "- id:" would be
@@ -12,14 +13,30 @@ param(
   [string]$BotId = "",
   [string]$Secret = "",
   [string]$AllowUsers = "",
+  [string]$WsUrl = "",
+  [string]$Provider = "",
+  [string]$Model = "",
   [string]$Profile = "desktop",
+  [string]$Package = "",
   [switch]$Uninstall
 )
 
 $ErrorActionPreference = "Stop"
 
 $pluginDir = $PSScriptRoot
-$dsh = Join-Path $env:LOCALAPPDATA "Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd"
+
+# Locate the dsh CLI: explicit override, then the bundled Desktop path, then PATH.
+$dsh = $env:DSH_CLI
+if (-not $dsh) {
+  $candidate = Join-Path $env:LOCALAPPDATA "Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd"
+  if (Test-Path $candidate) { $dsh = $candidate }
+}
+if (-not $dsh) {
+  $found = Get-Command dsh -ErrorAction SilentlyContinue
+  if ($found) { $dsh = $found.Source }
+}
+if (-not $dsh) { throw "dsh CLI not found. Set `$env:DSH_CLI or install DeepSeek Harness Desktop first." }
+
 $profileDir = Join-Path $env:USERPROFILE ".dsh\profiles\$Profile"
 $patchPath = Join-Path $profileDir "cordis.patch.yml"
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -27,7 +44,6 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $markerStart = "# >>> wecom-bridge (managed by install.ps1)"
 $markerEnd = "# <<< wecom-bridge"
 
-if (-not (Test-Path $dsh)) { throw "dsh CLI not found: $dsh" }
 if (-not (Test-Path $patchPath)) { throw "profile config not found: $patchPath (has the desktop app been started once?)" }
 
 function Read-Text($path) { return [System.IO.File]::ReadAllText($path) }
@@ -78,25 +94,40 @@ if ($Uninstall) {
 }
 
 Write-Host "1/2 Installing plugin into profile '$Profile' ..."
-Write-Host "     source: $pluginDir"
-$linked = Test-Path (Join-Path $profileDir "node_modules\dsh-wecom-plugin")
-if ($linked) {
-  Write-Host "     already linked, skipping pnpm"
-} else {
-  & $dsh plugin --profile $Profile add $pluginDir
+if ($Package) {
+  # Published package mode: install from npm and reference it by bare name.
+  Write-Host "     package: $Package"
+  & $dsh plugin --profile $Profile add $Package
   if ($LASTEXITCODE -ne 0) {
-    $dotted = $pluginDir -replace '\\', '/'
-    Write-Host "dsh plugin add failed (exit $LASTEXITCODE). Manual steps:" -ForegroundColor Yellow
-    Write-Host "  1) edit $profileDir\package.json"
-    Write-Host "     add to dependencies:  `"dsh-wecom-plugin`": `"file:$dotted`""
-    Write-Host "  2) run:  & `"$dsh`" plugin --profile $Profile install"
-    throw "Install did not finish."
+    throw "dsh plugin add $Package failed (exit $LASTEXITCODE). See output above."
   }
+  $entryName = $Package
+} else {
+  # Local directory mode: link this checkout and reference it by absolute path.
+  # The launcher builds one immutable runtime resolution from the installation
+  # and the bundle dependency graph, so a profile-local link is not guaranteed
+  # to be part of it. Paths are explicitly supported for inserted rows.
+  Write-Host "     source: $pluginDir"
+  $linked = Test-Path (Join-Path $profileDir "node_modules\dsh-wecom-plugin")
+  if ($linked) {
+    Write-Host "     already linked, skipping pnpm"
+  } else {
+    & $dsh plugin --profile $Profile add $pluginDir
+    if ($LASTEXITCODE -ne 0) {
+      $dotted = $pluginDir -replace '\\', '/'
+      Write-Host "dsh plugin add failed (exit $LASTEXITCODE). Manual steps:" -ForegroundColor Yellow
+      Write-Host "  1) edit $profileDir\package.json"
+      Write-Host "     add to dependencies:  `"dsh-wecom-plugin`": `"file:$dotted`""
+      Write-Host "  2) run:  & `"$dsh`" plugin --profile $Profile install"
+      throw "Install did not finish."
+    }
+  }
+  $entryName = (($pluginDir -replace '\\', '/').TrimEnd('/')) + '/lib/index.js'
 }
 
 Write-Host "2/2 Writing the insert block ..."
 $stripped = (Strip-WecomBlock $current).TrimEnd()
-if ($stripped.Trim() -eq "[]") { $stripped = "" }   # 空 patch 必须留空，不能保留 [] 再接块序列
+if ($stripped.Trim() -eq "[]") { $stripped = "" }   # empty patch must stay empty, not keep [] before the block
 if (-not ($stripped -match '\S')) { $stripped = "" }
 
 $quoted = @()
@@ -106,23 +137,20 @@ foreach ($item in ($AllowUsers -split '[,\s]+')) {
 }
 $allowList = '[' + ($quoted -join ', ') + ']'
 
-# Name the row by absolute path, not by the bare package specifier: the launcher
-# builds one immutable runtime resolution from the installation and the bundle
-# dependency graph, so a profile-local link is not guaranteed to be part of it.
-# Paths are explicitly supported for inserted rows.
-$entryName = (($pluginDir -replace '\\', '/').TrimEnd('/')) + '/lib/index.js'
+$configLines = @()
+$configLines += '        botId: "' + $BotId + '"'
+$configLines += '        secret: "' + $Secret + '"'
+$configLines += '        allowUsers: ' + $allowList
+if ($WsUrl)   { $configLines += '        wsUrl: "' + ($WsUrl -replace '\s+', '') + '"' }
+if ($Provider) { $configLines += '        provider: "' + $Provider + '"' }
+if ($Model)   { $configLines += '        model: "' + $Model + '"' }
 
-$block = @"
-$markerStart
-- insert:
-    - id: wecom-bridge
-      name: "$entryName"
-      config:
-        botId: "$BotId"
-        secret: "$Secret"
-        allowUsers: $allowList
-$markerEnd
-"@
+$block = $markerStart + "`r`n" + "- insert:`r`n"
+$block += "    - id: wecom-bridge`r`n"
+$block += '      name: "' + $entryName + '"' + "`r`n"
+$block += "      config:`r`n"
+$block += ($configLines -join "`r`n") + "`r`n"
+$block += $markerEnd
 
 Write-Text $patchPath ($stripped + "`r`n`r`n" + $block + "`r`n")
 Write-Host "     wrote $patchPath"
@@ -141,7 +169,7 @@ Write-Host "     verified: botId/secret are single-line"
 
 Write-Host ""
 Write-Host "Done. Next:" -ForegroundColor Cyan
-Write-Host "  1) stop the old standalone bridge (the dsh-wecom 'serve' window) so the two connections do not kick each other"
+Write-Host "  1) stop any other WeCom connection (an older standalone bridge would kick this one)"
 Write-Host "  2) restart DeepSeek Harness (or wait for dsh-hmr to reload the profile)"
 Write-Host "  3) in WeCom send /ping, then /sessions and /debug"
 Write-Host ""

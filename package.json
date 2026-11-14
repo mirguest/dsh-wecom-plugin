@@ -1,32 +1,65 @@
 {
   "name": "dsh-wecom-plugin",
-  "version": "0.3.0",
-  "private": true,
+  "version": "1.0.0",
   "type": "module",
-  "description": "WeCom (企业微信) smart-robot channel for DeepSeek Harness Desktop: list, read and continue the sessions that live in the desktop host",
+  "description": "WeCom (WeChat Work) smart-robot channel for DeepSeek Harness: list, read, continue, and approve the sessions that live in the DSH Desktop host process",
   "keywords": [
     "dsh",
+    "dsh-plugin",
     "deepseek-harness",
     "cordis-plugin",
     "wecom",
+    "wechat-work",
     "企业微信",
     "aibot"
   ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mirguest/dsh-wecom-plugin.git"
+  },
+  "homepage": "https://github.com/mirguest/dsh-wecom-plugin#readme",
+  "bugs": {
+    "url": "https://github.com/mirguest/dsh-wecom-plugin/issues"
+  },
+  "author": "mirguest",
   "main": "lib/index.js",
   "exports": {
-    ".": "./lib/index.js"
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
   },
   "files": [
     "lib",
+    "cordis.patch.yml",
     "install.ps1",
     "README.md",
-    "docs"
+    "CHANGELOG.md"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=18.17.0",
+    "dsh": ">=0.2.2-rc.1 <0.3.0"
   },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.1.0",
+    "@deepseek-ai/dsh-session-query": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-agent": "0.2.2-rc.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-agent": {
+      "optional": true
+    }
+  },
+  "sideEffects": false,
   "scripts": {
-    "test": "node test/plugin.test.mjs && node test/phase3.test.mjs && node test/approval.test.mjs && node test/read.test.mjs"
-  },
-  "license": "MIT"
+    "test": "node --test test/"
+  }
 }
