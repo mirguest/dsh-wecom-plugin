@@ -62,12 +62,19 @@ The script links this checkout into `~/.dsh/profiles/desktop/node_modules` and a
 
 ### B. Published package
 
-```powershell
-# 1) install the package into the profile (forwards to pnpm)
-dsh plugin --profile desktop add dsh-wecom-plugin
+Works on any DSH host (Windows Desktop, macOS, Linux, WSL, headless). Replace `<profile>` with the profile you use (`desktop`, `web`, `headless`, `acp`, …):
+
+```bash
+# Linux / macOS / WSL
+dsh plugin --profile <profile> add dsh-wecom-plugin
 ```
 
-Then make the profile load it. Either use the DSH **Plugin Manager** (which reads this package's `dsh.bundle.patch`, i.e. [`cordis.patch.yml`](cordis.patch.yml), and composes it into the profile), or append the block manually to `~/.dsh/profiles/desktop/cordis.patch.yml`:
+```powershell
+# Windows PowerShell
+dsh plugin --profile <profile> add dsh-wecom-plugin
+```
+
+Then make the profile load it. Either use the DSH **Plugin Manager** (which reads this package's `dsh.bundle.patch`, i.e. [`cordis.patch.yml`](cordis.patch.yml), and composes it into the profile), or append the block manually to `~/.dsh/profiles/<profile>/cordis.patch.yml`:
 
 ```yaml
 - insert:
@@ -81,13 +88,32 @@ Then make the profile load it. Either use the DSH **Plugin Manager** (which read
 
 > A new plugin **must** go through `- insert:`; a bare top-level `- id:` row is treated by the loader as an override of a non-existent entry and silently ignored.
 
-Restart DeepSeek Harness. Load diagnostics are written to `~/.dsh/wecom-plugin.log`:
+Restart the DSH host. Load diagnostics are written to `~/.dsh/wecom-plugin.log`:
 
 ```
 apply() called; botId=set secret=set allowUsers=<your UserID>
 正在连接 wss://openws.work.weixin.qq.com …
 企业微信认证成功，开始接收消息
 ```
+
+### C. Linux / WSL / headless hosts
+
+The plugin is pure Node and fully cross-platform. Example for a WSL `web` profile, configured with environment variables instead of editing YAML:
+
+```bash
+export DSH_WECOM_BOT_ID=aib...
+export DSH_WECOM_SECRET=gPJ...
+export DSH_WECOM_ALLOW_USERS=LinTao   # comma separated; empty = allow everyone
+
+dsh plugin --profile web add dsh-wecom-plugin
+# insert the block above with an empty config: {}, then restart dsh
+tail -f ~/.dsh/wecom-plugin.log      # expect: apply() called … 认证成功
+```
+
+Two things to keep in mind when running this on several hosts:
+
+- **One WeCom bot = one connection.** The gateway kicks the older connection when a new one subscribes with the same BotId/Secret. Stop the plugin on the other host first, or use a separate bot per host.
+- **Sessions are per host.** Each DSH installation has its own `~/.dsh` session store; `/sessions` lists the sessions of the host the plugin runs in, not another machine's.
 
 ## Configuration
 
@@ -119,7 +145,7 @@ Approvals: tool operations that hit the `ask` policy are pushed to WeCom — rep
 ## Security
 
 - `allowUsers` whitelist; non-whitelisted users are rejected before any session operation.
-- Credentials live only in `~/.dsh/profiles/desktop/cordis.patch.yml` (your machine, never committed). The log only records `set` / `MISSING`, never values.
+- Credentials live only in the profile's `cordis.patch.yml` (`~/.dsh/profiles/<profile>/cordis.patch.yml`, your machine, never committed). The log only records `set` / `MISSING`, never values.
 - No inbound HTTP listener; a single outbound WSS connection.
 - High-risk operations still go through the host's approval seam — the plugin only relays the question to a human.
 - `/debug` prints session metadata (e.g. working directories). Only use it in trusted chats.
@@ -185,7 +211,15 @@ cd dsh-wecom-plugin
 
 脚本把本仓库 link 进 `~/.dsh/profiles/desktop/node_modules`，并向 `~/.dsh/profiles/desktop/cordis.patch.yml` 追加受管理的 `- insert:` 配置块（新插件必须走 `- insert:`，顶层 `- id:` 会被 loader 静默忽略）。卸载：`.\install.ps1 -Uninstall`。
 
-**发布包安装**：`dsh plugin --profile desktop add dsh-wecom-plugin`，然后用 DSH 插件管理页（会读取本包的 `dsh.bundle.patch`，即 `cordis.patch.yml`）或手工追加上述 insert 块。凭据也可用环境变量 `DSH_WECOM_BOT_ID` / `DSH_WECOM_SECRET` / `DSH_WECOM_ALLOW_USERS` 提供。
+**发布包安装**（适用于任意 DSH 主机：Windows / macOS / Linux / WSL / headless，`<profile>` 换成你用的 profile 名，如 `desktop`、`web`、`headless`）：
+
+```bash
+dsh plugin --profile <profile> add dsh-wecom-plugin
+```
+
+然后用 DSH 插件管理页（会读取本包的 `dsh.bundle.patch`，即 `cordis.patch.yml`）或手工追加 insert 块。凭据也可用环境变量 `DSH_WECOM_BOT_ID` / `DSH_WECOM_SECRET` / `DSH_WECOM_ALLOW_USERS` 提供（headless / WSL 场景推荐）。
+
+**Linux / WSL 注意**：插件是纯 Node，全平台可用；日志同样在 `~/.dsh/wecom-plugin.log`。同一个企业微信机器人只允许一条长连接——多台主机同时连会互踢，请停掉另一端或给每台主机各建一个机器人；每套 DSH 有独立的会话库，`/sessions` 列的是本机（本容器）的会话。
 
 **命令**：`/sessions`（列表）、`/read <序号> [条数]`（只读历史）、`/use <序号|sessionId>`（绑定）、`/status`、`/unuse`、`/ping`、`/id`、`/debug`、`/help`。绑定后直接发文字即投递进该会话，与桌面端共用同一个 Runtime。
 
