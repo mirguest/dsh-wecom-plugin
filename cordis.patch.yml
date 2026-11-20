@@ -5,7 +5,7 @@
 # package. Provide them through one of:
 #   - environment variables: DSH_WECOM_BOT_ID / DSH_WECOM_SECRET /
 #     DSH_WECOM_ALLOW_USERS / DSH_WECOM_WS_URL / DSH_WECOM_PROVIDER /
-#     DSH_WECOM_MODEL
+#     DSH_WECOM_MODEL / DSH_WECOM_NEW_SESSION_CWD / DSH_WECOM_BINDINGS_PATH
 #   - editing this profile's cordis.patch.yml and filling the config below
 #     (Windows users can also run .\install.ps1, which writes this block).
 - insert:

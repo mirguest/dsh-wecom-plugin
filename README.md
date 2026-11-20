@@ -36,10 +36,14 @@ openws.work.weixin.qq.com ──② long connection (outbound from this machine)
 |---|---|
 | List sessions | `ctx.sessionQuery.listSessions()` |
 | Read history | `ctx.sessionQuery.readSession(id)` |
-| Get the live agent | `ctx.agents.get(sessionId)` |
-| Resume a cold session | `ctx.agents.resume({ resumeSessionId, agentOptions })` |
+| Create a session | `ctx.sessionController.create({ cwd })` — the Desktop UI's own "new session" path: preset composition, default model, shell and other tools |
+| Get / resume the live agent | `ctx.sessionController.resolveAgent(sessionId)` |
 | Deliver one turn of input | `agent.followup({ id, role: 'user', content, source: { kind: 'user' } })` |
 | Approvals | `approval/request` waterfall responder |
+
+Hosts without a session controller (headless profiles) degrade to `ctx.agents`
+plus manual `agentPresets` composition, and to `ctx.agents` alone when no preset
+roster is mounted.
 
 ## Requirements
 
@@ -125,8 +129,11 @@ Every value can come from the patch `config:` or from an environment variable (u
 | `secret` | `DSH_WECOM_SECRET` | Smart Robot Secret | — (required) |
 | `allowUsers` | `DSH_WECOM_ALLOW_USERS` (comma separated) | WeCom UserID whitelist; empty = allow everyone | `[]` |
 | `wsUrl` | `DSH_WECOM_WS_URL` | Gateway URL (only if WeCom ever changes it) | `wss://openws.work.weixin.qq.com` |
-| `provider` | `DSH_WECOM_PROVIDER` | Provider id used when resuming cold sessions | `deepseek-official` |
-| `model` | `DSH_WECOM_MODEL` | Model id used when resuming cold sessions | `deepseek-flash` |
+| `provider` | `DSH_WECOM_PROVIDER` | Provider id for sessions the plugin resumes itself (hosts without a session controller; the Desktop path uses the host default) | `deepseek-official` |
+| `model` | `DSH_WECOM_MODEL` | Model id, same fallback scope as `provider` | `deepseek-flash` |
+| `newSessionCwd` | `DSH_WECOM_NEW_SESSION_CWD` | Working directory for auto-created sessions (absolute path) | newest session's cwd |
+| `bindingsPath` | `DSH_WECOM_BINDINGS_PATH` | Where user bindings persist | `~/.dsh/wecom-plugin-bindings.json` |
+| `questionTimeoutMs` | `DSH_WECOM_QUESTION_TIMEOUT_MS` | How long a user question waits for a WeCom answer before being handed back to the Desktop UI | `180000` |
 | `logPath` | `DSH_WECOM_LOG_PATH` | Diagnostic log location | `~/.dsh/wecom-plugin.log` |
 
 ## Commands
@@ -135,12 +142,34 @@ Every value can come from the patch `config:` or from an environment variable (u
 |---|---|
 | `/sessions` | List all Desktop sessions (title / short id / time / running / persisted / format status / cwd) |
 | `/read <index> [count]` | Read a session's conversation history (read-only; runtime-injected context filtered out) |
-| `/use <index\|sessionId>` | Bind a session; plain text is then delivered into it |
+| `/use <index\|sessionId>` | Switch the binding (optional — see below) |
 | `/status` | Current binding and running state |
 | `/unuse` | Clear the binding |
 | `/ping` `/id` `/debug` `/help` | Connectivity and diagnostics |
 
-Approvals: tool operations that hit the `ask` policy are pushed to WeCom — reply `1` to allow once, `2` to reject (3 minutes without a reply cancels). Approvals for sessions nobody bound here stay answered by the desktop UI; the plugin does not take them over.
+**No binding ceremony.** The first plain-text message from a user with no binding
+auto-creates a new session inside the host — through the Desktop's own
+`sessionController` path, so it gets the same preset composition (shell and other
+tools) and default model as a Desktop session (working directory inherited from
+the newest session, or `newSessionCwd`) — and delivers the message into it.
+Bindings are persisted to `~/.dsh/wecom-plugin-bindings.json`; after a Desktop
+restart the plugin re-binds automatically, or creates a fresh session if the old
+one is gone. `/unuse` clears the binding — the next plain message auto-creates
+again.
+
+Approvals: tool operations that hit the `ask` policy are pushed to WeCom for every
+session bound to a WeCom user — reply `1` to allow once, `2` to reject (3 minutes
+without a reply cancels). The plugin's waterfall listener is registered with
+`prepend`, so for bound sessions the approval reaches WeCom **before** the Web UI
+bridge can hold it; while the vote is open the Desktop UI does not pop the same
+request. Approvals for sessions nobody bound here stay answered by the desktop
+UI; the plugin does not take them over.
+
+User questions (`ask_user_question` — e.g. choosing among several options, as
+when a command is ambiguous) follow the same route: bound sessions receive the
+numbered choices on WeCom and answer with a number (comma-separated numbers for
+multi-select) or free text; unanswered questions are handed back to the Desktop
+UI after `questionTimeoutMs`.
 
 ## Security
 
@@ -155,7 +184,7 @@ Approvals: tool operations that hit the `ask` policy are pushed to WeCom — rep
 - **No live two-way sync**: the phone sees the result after the turn finishes, not the desktop's in-progress stream.
 - Approvals are visible on both ends; first answer wins.
 - `/read` shows at most 30 messages, no pagination.
-- One bound session per WeCom user.
+- One bound session per WeCom user (auto-created on first message, re-bound automatically after a restart).
 
 ## Development
 
@@ -195,7 +224,7 @@ Tested against DSH Desktop **0.2.2-rc.1** (Windows). The plugin depends on the h
 <a id="中文说明"></a>
 ## 中文说明
 
-在 **DSH Desktop Host 进程内**接入企业微信智能机器人，让手机能列出、查看、续跑桌面上的那条会话，并把需要审批的工具操作推到你手机上投票（回 `1` 允许一次、回 `2` 拒绝，3 分钟不回按取消）。
+在 **DSH Desktop Host 进程内**接入企业微信智能机器人，让手机能列出、查看、续跑桌面上的那条会话，并把需要审批的工具操作**优先**推到你手机上投票（回 `1` 允许一次、回 `2` 拒绝，3 分钟不回按取消；投票期间桌面端不再弹同一个请求，未绑定会话的审批仍由桌面 UI 处理）。
 
 **为什么必须是进程内插件**：Desktop 的会话由它自己的进程持有写句柄，任何另一个进程去 `resume` 同一条会话都会被拒绝（`already owned by an active write handle`）。插件与桌面 UI 共享同一个 Cordis 容器与 Agent Runtime，天然看到同一批会话，也不会产生跨进程写入。
 
@@ -221,9 +250,11 @@ dsh plugin --profile <profile> add dsh-wecom-plugin
 
 **Linux / WSL 注意**：插件是纯 Node，全平台可用；日志同样在 `~/.dsh/wecom-plugin.log`。同一个企业微信机器人只允许一条长连接——多台主机同时连会互踢，请停掉另一端或给每台主机各建一个机器人；每套 DSH 有独立的会话库，`/sessions` 列的是本机（本容器）的会话。
 
-**命令**：`/sessions`（列表）、`/read <序号> [条数]`（只读历史）、`/use <序号|sessionId>`（绑定）、`/status`、`/unuse`、`/ping`、`/id`、`/debug`、`/help`。绑定后直接发文字即投递进该会话，与桌面端共用同一个 Runtime。
+**命令**：`/sessions`（列表）、`/read <序号> [条数]`（只读历史）、`/use <序号|sessionId>`（换绑，可省略）、`/status`、`/unuse`、`/ping`、`/id`、`/debug`、`/help`。**免绑定**：没有绑定时直接发文字，插件会走**桌面「新建会话」同一条路**（`sessionController`）在 Host 内自动开一条新会话——预设组合、默认模型、shell 等工具与桌面端一致（工作目录默认沿用最近一条会话的 cwd，可用 `newSessionCwd` / `DSH_WECOM_NEW_SESSION_CWD` 覆盖），并回一条「已自动开新会话」说明；绑定关系落盘在 `~/.dsh/wecom-plugin-bindings.json`（可用 `bindingsPath` / `DSH_WECOM_BINDINGS_PATH` 覆盖），桌面重启后自动接回（接回同样走 `sessionController.resolveAgent`，带预设），旧会话已不存在时自动换新。`/use` 仍可用于手动切换，`/unuse` 解除后下一条消息会重新自动开会话。
 
-**已知边界**：没有实时双向同步（手机看到的是这一轮结束后的结果）；审批双端并存、先答先得；`/read` 一次最多 30 条；一次只能绑定一条会话。
+**审批与追问**：绑定会话的审批和 `ask_user_question` 追问（比如「ssh 到哪台机器」要选方案）都会**先**推到手机——审批回 `1` 允许一次 / `2` 拒绝，追问回序号（多选逗号分隔）或自定义内容。插件的监听器以 `prepend` 注册，抢在 Web UI 的远程瀑布桥前面，作答期间桌面端不再弹同一个请求。未绑定会话、微信掉线、或超时（审批 3 分钟；追问 `questionTimeoutMs`，默认 3 分钟）未答时，请求交回桌面 UI。
+
+**已知边界**：没有实时双向同步（手机看到的是这一轮结束后的结果）；`/read` 一次最多 30 条；每个用户一次只绑定一条会话（未绑定时发消息会自动开会话）。
 
 **安全**：`allowUsers` 白名单；凭据只在本机 profile 配置里（日志只记 `set/MISSING`，不落明文）；无任何入站监听，只有一条出站 WSS；高风险操作仍走 Host 的审批 seam，插件只把询问转发给人。`/debug` 会回显会话元数据（如工作目录），请只在受信任的聊天里使用。
 

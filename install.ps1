@@ -16,6 +16,8 @@ param(
   [string]$WsUrl = "",
   [string]$Provider = "",
   [string]$Model = "",
+  [string]$NewSessionCwd = "",
+  [string]$BindingsPath = "",
   [string]$Profile = "desktop",
   [string]$Package = "",
   [switch]$Uninstall
@@ -144,6 +146,8 @@ $configLines += '        allowUsers: ' + $allowList
 if ($WsUrl)   { $configLines += '        wsUrl: "' + ($WsUrl -replace '\s+', '') + '"' }
 if ($Provider) { $configLines += '        provider: "' + $Provider + '"' }
 if ($Model)   { $configLines += '        model: "' + $Model + '"' }
+if ($NewSessionCwd) { $configLines += '        newSessionCwd: "' + $NewSessionCwd + '"' }
+if ($BindingsPath)  { $configLines += '        bindingsPath: "' + $BindingsPath + '"' }
 
 $block = $markerStart + "`r`n" + "- insert:`r`n"
 $block += "    - id: wecom-bridge`r`n"

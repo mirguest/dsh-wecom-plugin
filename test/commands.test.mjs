@@ -3,7 +3,7 @@
  * 整条链路走一遍，不碰网络、不写用户日志。
  */
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as plugin from '../lib/index.js';
@@ -55,6 +55,7 @@ plugin.apply(ctx, {
   allowUsers: ['u1'],
   socketFactory: () => fake,
   logPath: join(workDir, 'plugin.log'),
+  bindingsPath: join(workDir, 'bindings.json'),
 });
 
 const emit = (type, payload) => fake.listeners.get(type)?.forEach((fn) => fn(payload));
@@ -72,6 +73,16 @@ async function sendMessage(userId, content, reqId) {
     body: { msgid: `m-${reqId}`, from: { userid: userId }, chattype: 'single', text: { content } },
   }));
   await tick();
+}
+
+/** /use、/unuse 现在要等一次真实落盘，回复帧可能晚几个事件循环才出现 */
+async function waitReply(reqId, regex, timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (regex.test(lastContentFor(reqId))) return true;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return false;
 }
 
 try {
@@ -102,9 +113,13 @@ try {
 
   // 5) /use 绑定与 /status
   await sendMessage('u1', '/use 1', 'msg-5');
-  assert.match(lastContentFor('msg-5'), new RegExp(`已绑定：${SESSION_ID}`), '/use 应绑定会话');
+  assert.ok(await waitReply('msg-5', new RegExp(`已绑定：${SESSION_ID}`)), '/use 应绑定会话');
   await sendMessage('u1', '/status', 'msg-6');
   assert.match(lastContentFor('msg-6'), /运行中/, '/status 应显示运行中');
+
+  // 5.5) /use 的绑定应同步落盘（桌面重启后自动接回）
+  const persisted = JSON.parse(readFileSync(join(workDir, 'bindings.json'), 'utf8'));
+  assert.equal(persisted.users.u1.sessionId, SESSION_ID, '/use 应持久化绑定');
 
   // 6) 绑定后发普通文字 → 没有 agents 服务，应回明确报错而不是静默
   await sendMessage('u1', '继续干活', 'msg-7');
@@ -126,9 +141,12 @@ try {
   await sendMessage('u2', '/ping', 'msg-9');
   assert.match(lastContentFor('msg-9'), /没有权限/, '非白名单用户应被拒绝');
 
-  // 9) /unuse 解绑
+  // 9) /unuse 解绑（同时清除持久化绑定）
   await sendMessage('u1', '/unuse', 'msg-10');
-  assert.match(lastContentFor('msg-10'), /已解除绑定/);
+  assert.ok(await waitReply('msg-10', /已解除绑定/), '/unuse 应回解除确认');
+  const afterUnuse = JSON.parse(readFileSync(join(workDir, 'bindings.json'), 'utf8'));
+  assert.equal(afterUnuse.users.u1, undefined, '/unuse 应清除持久化绑定');
 } finally {
-  rmSync(workDir, { recursive: true, force: true });
+  // Windows 上刚写入的文件可能仍被防病毒/索引器占用，rmSync 需要重试
+  rmSync(workDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
 }
