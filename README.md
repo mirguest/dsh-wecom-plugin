@@ -182,7 +182,7 @@ UI after `questionTimeoutMs`.
 ## Known limitations
 
 - **No live two-way sync**: the phone sees the result after the turn finishes, not the desktop's in-progress stream.
-- Approvals are visible on both ends; first answer wins.
+- Bound sessions answer approvals and questions on WeCom first; while the vote is open the Desktop UI does not pop the same request.
 - `/read` shows at most 30 messages, no pagination.
 - One bound session per WeCom user (auto-created on first message, re-bound automatically after a restart).
 
